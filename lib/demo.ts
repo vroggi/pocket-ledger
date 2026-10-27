@@ -1,0 +1,11 @@
+import { initialState, reduce, today, monthOf, monthShift } from './finance';
+export function demoState(){
+ let s=initialState(),i=0;const run=(type:string,value:any)=>{s=reduce(s,{requestId:'demo-'+(++i),type,value})};const now=today(),m=monthOf(now),day=(n:number)=>m+'-'+String(Math.min(n,Number(now.slice(8)))).padStart(2,'0');
+ run('account',{id:'demo-bank',name:'Everyday account',kind:'bank',opening:242000});run('account',{id:'demo-savings',name:'Savings account',kind:'bank',opening:0});run('account',{id:'demo-cash',name:'Cash wallet',kind:'cash',opening:6000});
+ run('transaction',{id:'demo-salary',kind:'income',amount:210000,accountId:'demo-bank',categoryId:'category-0',date:day(1),note:'Monthly salary',nonEssential:false});
+ for(const [id,amount,category,note,nonEssential,date] of [['demo-food',6824,'category-2','Weekly groceries',false,24],['demo-dinner',3240,'category-3','Dinner with friends',true,23],['demo-transit',2900,'category-4','Monthly bus pass',false,22],['demo-book',1850,'category-9','A new read',true,20],['demo-rent',58000,'category-5','Apartment rent',false,4]] as const)run('transaction',{id,kind:'expense',amount,accountId:'demo-bank',categoryId:category,date:day(date),note,nonEssential});
+ run('goal',{id:'demo-emergency',name:'Emergency Fund',target:300000,deadline:monthShift(m,10)+'-28',mode:'account',accountId:'demo-savings',percent:10,incomeCategories:[],monthly:15000});run('allocate',{goalId:'demo-emergency',amount:85000,fromAccountId:'demo-bank'});
+ run('goal',{id:'demo-vacation',name:'Summer escape',target:120000,deadline:monthShift(m,8)+'-28',mode:'virtual',accountId:'',percent:5,incomeCategories:[],monthly:10000});run('allocate',{goalId:'demo-vacation',amount:28000});
+ for(const [id,categoryId,limit] of [['demo-budget1','category-2',22000],['demo-budget2','category-3',12000],['demo-budget3','category-4',6000]])run('budget',{id,categoryId,month:m,limit});
+ run('recurring',{id:'demo-music',name:'Music subscription',amount:699,categoryId:'category-10',accountId:'demo-bank',frequency:'monthly',nextDate:now,paused:false});run('recurring',{id:'demo-phone',name:'Phone plan',amount:1490,categoryId:'category-10',accountId:'demo-bank',frequency:'monthly',nextDate:monthShift(m,1)+'-02',paused:false});return s;
+}

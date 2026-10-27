@@ -147,3 +147,19 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Pocket Ledger runtime, credentials and financial backups
+node_modules/
+dist/
+.next/
+.vinext/
+.wrangler/
+.sites-runtime/
+.env
+.env.*
+!.env.example
+.dev.vars
+*.tsbuildinfo
+outputs/
+*.backup.json
+backups/
