@@ -1,7 +1,8 @@
-// Private financial responses are deliberately never cached.
-self.addEventListener('install',()=>self.skipWaiting());
-self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
-self.addEventListener('fetch',event=>{
- if(event.request.method!=='GET'||new URL(event.request.url).origin!==self.location.origin)return;
- if(event.request.mode==='navigate')event.respondWith(fetch(event.request).catch(()=>new Response('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Pocket Ledger · Offline</title><body style="font:18px system-ui;max-width:480px;margin:18vh auto;padding:24px;color:#143e36"><h1>You’re offline</h1><p>Pocket Ledger needs an internet connection to load and save your finances. No changes have been saved.</p><button onclick="location.reload()" style="padding:14px 24px;font:inherit">Try again</button></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}})));
+// Only the static offline shell is cached. Private HTML and API responses are never cached.
+const PREFIX='pocket-ledger-shell-';let current;
+self.addEventListener('install',event=>event.waitUntil((async()=>{const r=await fetch('/offline/assets.json',{cache:'no-store'});if(!r.ok)throw Error('Offline shell unavailable');const manifest=await r.json();current=PREFIX+manifest.version;const cache=await caches.open(current);await cache.addAll(manifest.assets);await self.skipWaiting()})()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{if(!current){const r=await fetch('/offline/assets.json',{cache:'no-store'}).catch(()=>null);if(r?.ok)current=PREFIX+(await r.json()).version;}if(current)for(const key of await caches.keys())if(key.startsWith(PREFIX)&&key!==current)await caches.delete(key);await self.clients.claim()})()));
+self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
+ if(url.pathname.startsWith('/offline/')||['/icon.svg','/icon-192.png','/icon-512.png','/manifest.webmanifest'].includes(url.pathname)){event.respondWith(caches.match(event.request).then(cached=>cached||fetch(event.request)));return;}
+ if(event.request.mode==='navigate'&&!url.pathname.startsWith('/api/')&&!url.pathname.startsWith('/signin')&&!url.pathname.startsWith('/signout')&&!url.pathname.startsWith('/callback'))event.respondWith((async()=>{try{const abort=new AbortController();const timer=setTimeout(()=>abort.abort(),5000);let r;try{r=await fetch(event.request,{signal:abort.signal})}finally{clearTimeout(timer)}if(r.status<500)return r;}catch{}const cached=await caches.match('/offline/index.html');return cached||new Response('Connect once and open Pocket Ledger online to prepare offline access.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}})})());
 });

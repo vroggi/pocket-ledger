@@ -163,3 +163,7 @@ dist/
 outputs/
 *.backup.json
 backups/
+
+# Generated offline PWA assets
+public/offline/
+public/qa-mobile.html
