@@ -1,4 +1,4 @@
-# Pocket Ledger
+# finora (Pocket Ledger)
 
 A multi-user personal finance PWA with a private ledger per signed-in user with mobile installation and offline operation. English interface, EUR, calendar dates in Europe/Vilnius. It records your finances manually; it does not connect to banks or execute real payments.
 
@@ -6,7 +6,7 @@ A multi-user personal finance PWA with a private ledger per signed-in user with 
 
 - React 19 + TypeScript; Next.js-compatible app routes supplied by the Sites Vinext starter (Vinext is beta, not an official Next.js runtime).
 - Cloudflare Workers for the API; Cloudflare D1 (SQLite) for durable data; Drizzle schema and committed SQL migrations.
-- Hosted authentication is provided by the **Sites ChatGPT gateway**. Anyone can open the public installation page and demo; signing in creates their own empty ledger. No passwords are stored by this application.
+- Authentication supports **Supabase email/password** via server-verified credentials and HttpOnly sessions. It remains in compatibility mode until the service is configured; see [password sign-in setup](docs/PASSWORD_AUTH_SETUP.md). In compatibility mode, hosted identity is provided by the **Sites ChatGPT gateway**. Anyone can open the public installation page and demo; signing in creates their own empty ledger. No passwords are stored by this application.
 - Installable PWA with PNG icons, a standalone offline app shell, encrypted IndexedDB storage and an optimistic outbox. The service worker caches static application assets only; financial API responses and authenticated server HTML are never cached.
 
 For independent Cloudflare hosting, Workers Free currently permits 100,000 requests/day and 10 ms CPU/request; D1 Free includes 5 million rows read/day, 100,000 rows written/day and 5 GB total storage. Paid Workers starts at US$5/month; usage beyond included quotas is billed separately. These are Cloudflare's direct-account prices, **not a claim about Sites billing**. Verify before choosing a plan: https://developers.cloudflare.com/workers/platform/pricing/ and https://developers.cloudflare.com/d1/platform/pricing/ . A larger ledger may exceed the free CPU allowance even at low request volume.
@@ -37,6 +37,7 @@ pnpm run build
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_magenta_wallflower.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_owner_guard.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_reflective_garia.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0003_clever_abomination.sql
 pnpm dev
 ```
 
@@ -52,16 +53,31 @@ pnpm run build
 
 `pnpm start` previews the built worker locally; it does not simulate hosted sign-in. Use `pnpm dev` for the portable local sign-in workflow.
 
+## Interface and password sign-in
+
+The finora interface follows the supplied dark/violet dashboard reference. Light
+mode remains available. The balance chart derives from actual recorded transactions;
+opening balances are treated as starting balances because their history has no
+date. Internal transfers have no effect on the chart. Comparison percentages are
+never fabricated for zero prior-month values. Demo figures remain clearly labelled.
+
+Email/password signup, confirmation, sign-in, recovery, logout and one-time existing
+ledger connection are implemented. **Production activation is pending**: no Supabase
+project is configured in this checkout or the current hosting environment. Follow
+[the setup guide](docs/PASSWORD_AUTH_SETUP.md). Until that is completed, the current
+platform login continues to work and the password form honestly shows setup pending.
+No claim of successful real password login or email delivery is made by local tests.
+
 ## Hosted accounts and database
 
-1. Publish the multi-user version and apply its schema migration before setting the Site audience to **public**. Public access permits the landing page, `/install`, `/privacy` and `/demo`; it does not bypass financial API authentication.
-2. Each visitor signs in through ChatGPT. Sites strips/replaces authenticated identity headers. Anonymous financial requests return 401. `user_ledgers.owner` is the stable authenticated Site user ID, not an email or a client-selected ID. Every query and write is scoped to this ID.
+1. Publish the multi-user version and apply its schema migration before setting the Site audience to **public**. Public access permits the landing page, `/auth`, `/install`, `/privacy` and `/demo`; it does not bypass financial API authentication.
+2. Each visitor signs in through the configured provider. Password mode uses `password_accounts` to map the independently verified Supabase user ID to a unique ledger owner and `password_sessions` for hashed, expiring session tokens. Compatibility mode uses ChatGPT. Sites strips/replaces authenticated identity headers. Anonymous financial requests return 401. `user_ledgers.owner` is the stable authenticated Site user ID, not an email or a client-selected ID. Every query and write is scoped to this ID.
 3. The private D1 binding (`DB`) is server-only. No browser database key is issued. Database checks require valid JSON/schema/revisions, unique ownership and immutable owner IDs. An operator with infrastructure access can administer the database; this is not cloud end-to-end encryption.
 4. The original singleton `ledger` is retained. The original user's first request copies its existing payload and revision to their own `user_ledgers` row idempotently. Other users always start empty, including when they arrive before that original user. This bounded lazy migration leaves the original row intact; it is never a fallback for someone else's identity.
-5. Open on another device with the same ChatGPT account to sync. Every POST must also carry the account ID last verified by GET. It is compared with server identity, never used to choose another user's row. Older unscoped clients must reload before saving. Account switches stop the old tab's queue instead of replaying it into a different account.
+5. Open on another device with the same configured account to sync. Every POST must also carry the account ID last verified by GET. It is compared with server identity, never used to choose another user's row. Older unscoped clients must reload before saving. Account switches stop the old tab's queue instead of replaying it into a different account.
 6. Offline snapshots, encryption keys, queues and drafts are keyed by user in IndexedDB v2. Only the server-confirmed original owner may import the previous unscoped offline snapshot. The last verified account is the offline fallback. A browser profile is a device trust boundary, not a multi-user security vault: sign out before sharing it. Use separate OS/browser profiles for shared devices.
 
-A service token without visitor identity cannot operate the financial API. Never trust arbitrary identity headers at a directly exposed Worker origin. Outside Sites, replace `app/chatgpt-auth.ts` with verified origin-side authentication (for example verified Access JWTs) before publishing. Bare `wrangler deploy` does not provide Sites identity verification. Hosted migrations are applied during Sites publication.
+A service token without visitor identity cannot operate the financial API. Never trust arbitrary identity headers at a directly exposed Worker origin. Outside Sites, enable and verify password mode or replace the platform identity adapter with verified origin-side authentication before publishing. Never leave compatibility mode relying on client-supplied headers at an exposed origin. Bare `wrangler deploy` does not provide Sites identity verification. Hosted migrations are applied during Sites publication.
 
 ## Data model and atomicity
 
@@ -124,7 +140,7 @@ Offline-extended mode requires opening the ledger online once on each device so 
 
 ## Mobile and offline build
 
-Use **Install app** in the header. On iPhone, open in Safari and use Share → Add to Home Screen; on Android use Chrome’s Install app option. The installed app uses the same ChatGPT login and D1 database as the desktop site. Open once online on each device before expecting offline access.
+Use **Install app** in the header. On iPhone, open in Safari and use Share → Add to Home Screen; on Android use Chrome’s Install app option. The installed app uses the same configured login and D1 database as the desktop site. Open once online on each device before expecting offline access.
 
 `pnpm run build` first builds `offline/index.html` and its React client into ignored `public/offline/`, creates a content-versioned asset list, then builds the hosted Worker. Both UI entrypoints reuse the same Ledger component and financial/sync logic. Never commit device storage or generated offline bundles; the production build recreates them.
 

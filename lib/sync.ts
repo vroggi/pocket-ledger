@@ -1,7 +1,7 @@
 import {reduce,monthOf,today,type State,type Command} from './finance.ts';
 export type QueuedChange={command:Command;baseline:string;revision:number;createdAt:string};
 export type ConflictDraft=QueuedChange&{reason:string};
-export type DeviceLedger={server:State;revision:number;outbox:QueuedChange[];drafts:ConflictDraft[];lastSynced:string};
+export type DeviceLedger={server:State;revision:number;outbox:QueuedChange[];drafts:ConflictDraft[];lastSynced:string;ownerName?:string};
 export function fingerprint(s:State,c:Command):string{
  const v=c.value;const type=c.type;
  const collection=type==='account'||type==='archiveAccount'?s.accounts:type==='goal'||type==='confirmFixed'?s.goals:type==='category'?s.categories:type==='transaction'||type==='deleteTransaction'?s.transactions:type==='budget'||type==='deleteBudget'?s.budgets:type==='recurring'||type==='confirmRecurring'||type==='skipRecurring'?s.recurring:null;

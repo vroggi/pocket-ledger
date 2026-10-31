@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, check } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, integer, text, check, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 export const ledger = sqliteTable('ledger', {
  id: integer('id').primaryKey(),
@@ -15,3 +15,19 @@ export const userLedgers = sqliteTable('user_ledgers', {
  payload: text('payload').notNull(),
  updatedAt: text('updated_at').notNull(),
 }, t => [check('user_valid_payload',sql`json_valid(${t.payload})`),check('user_positive_revision',sql`${t.revision} >= 0`),check('user_document_version',sql`json_extract(${t.payload}, '$.schemaVersion') IS 1`)]);
+
+export const passwordAccounts=sqliteTable('password_accounts',{
+ providerId:text('provider_id').primaryKey().notNull(),
+ owner:text('owner').notNull().unique(),
+ email:text('email').notNull(),
+});
+export const passwordSessions=sqliteTable('password_sessions',{
+ tokenHash:text('token_hash').primaryKey().notNull(),
+ providerId:text('provider_id').notNull().references(()=>passwordAccounts.providerId),
+ expiresAt:integer('expires_at').notNull(),
+},t=>[index('password_sessions_expiry').on(t.expiresAt)]);
+export const authLimits=sqliteTable('auth_limits',{
+ key:text('key').primaryKey().notNull(),
+ attempts:integer('attempts').notNull(),
+ expiresAt:integer('expires_at').notNull(),
+},t=>[index('auth_limits_expiry').on(t.expiresAt)]);

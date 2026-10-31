@@ -7,10 +7,10 @@ import {readDevice,writeDevice,activeAccount,setActiveAccount,readLegacyDevice,e
 const liveRequests=new Set<AbortController>();
 async function network(path:string,init:RequestInit={}){const abort=new AbortController();liveRequests.add(abort);const timer=setTimeout(()=>abort.abort(),12000);try{return await fetch(path,{...init,signal:abort.signal,cache:'no-store'})}finally{clearTimeout(timer);liveRequests.delete(abort)}}
 export function useLedger(demo:boolean,expectedAccount?:string){
- const [data,setData]=useState<State|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[offline,setOffline]=useState(false),[notice,setNotice]=useState(''),[synced,setSynced]=useState(''),[queueCount,setQueueCount]=useState(0),[drafts,setDrafts]=useState<DeviceLedger['drafts']>([]),[authRequired,setAuthRequired]=useState(false);
+ const [data,setData]=useState<State|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[offline,setOffline]=useState(false),[notice,setNotice]=useState(''),[synced,setSynced]=useState(''),[queueCount,setQueueCount]=useState(0),[drafts,setDrafts]=useState<DeviceLedger['drafts']>([]),[authRequired,setAuthRequired]=useState(false),[ownerName,setOwnerName]=useState('');
  const account=useRef(expectedAccount||'');
  const local=useRef<DeviceLedger|null>(null),view=useRef<State|null>(null),storageVersion=useRef(0),running=useRef(false);
- const publish=useCallback((cache:DeviceLedger)=>{const rebased=rebase(cache,cache.server,cache.revision);local.current=rebased.cache;view.current=rebased.view;setData(rebased.view);setQueueCount(rebased.cache.outbox.length);setDrafts(rebased.cache.drafts);setSynced(cache.lastSynced?new Date(cache.lastSynced).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'');return rebased.cache},[]);
+ const publish=useCallback((cache:DeviceLedger)=>{const rebased=rebase(cache,cache.server,cache.revision);local.current=rebased.cache;view.current=rebased.view;setData(rebased.view);setOwnerName(cache.ownerName||'');setQueueCount(rebased.cache.outbox.length);setDrafts(rebased.cache.drafts);setSynced(cache.lastSynced?new Date(cache.lastSynced).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):'');return rebased.cache},[]);
  async function persist(cache:DeviceLedger){const normalized=rebase(cache,cache.server,cache.revision).cache;storageVersion.current=await writeDevice(normalized,storageVersion.current,account.current);publish(normalized);return normalized}
  async function refreshLocal(){if(!account.current)return null;const saved=await readDevice(account.current);if(saved){storageVersion.current=saved.version;local.current=saved.value;}return local.current}
  async function exclusive<T>(action:()=>Promise<T>):Promise<T>{if(navigator.locks)return navigator.locks.request('pocket-ledger-sync',action);return action()}
@@ -29,7 +29,7 @@ export function useLedger(demo:boolean,expectedAccount?:string){
  account.current=payload.accountId;await setActiveAccount(account.current);setAuthRequired(false);setOffline(false);setError('');
  try{cache=await refreshLocal();if(!cache&&payload.legacyOwner){const legacy=await readLegacyDevice();if(legacy){storageVersion.current=0;cache=await persist(legacy.value);await eraseLegacyDevice();}}}catch{setError('Offline storage is unavailable. Check device storage before adding changes.');}
  
- cache=rebase(cache??{server:payload.state,revision:payload.revision,outbox:[],drafts:[],lastSynced:''},payload.state,payload.revision).cache;cache.lastSynced=new Date().toISOString();
+ cache=rebase(cache??{server:payload.state,revision:payload.revision,outbox:[],drafts:[],lastSynced:''},payload.state,payload.revision).cache;cache.lastSynced=new Date().toISOString();cache.ownerName=payload.owner;
  try{cache=await persist(cache)}catch{publish(cache);setError('Could not update the offline copy. Check device storage before adding changes.');}
  while(cache.outbox.length){
   const q:QueuedChange=cache.outbox[0];let result:Response;
@@ -58,5 +58,5 @@ export function useLedger(demo:boolean,expectedAccount?:string){
  async function discardDraft(requestId:string){if(running.current)return;await exclusive(async()=>{const c=await refreshLocal();if(c)await persist({...c,drafts:c.drafts.filter(d=>d.command.requestId!==requestId)})})}
  async function reapplyDraft(requestId:string){if(running.current)return;running.current=true;try{await exclusive(async()=>{const c=await refreshLocal();const d=c?.drafts.find(d=>d.command.requestId===requestId);if(!c||!d)return;const current=rebase(c,c.server,c.revision);const q=prepareChange(current.cache,{...d.command,value:{...d.command.value,__baseline:fingerprint(current.view,d.command)}},current.view);await persist({...current.cache,drafts:current.cache.drafts.filter(d=>d.command.requestId!==requestId),outbox:[...current.cache.outbox,q]});})}catch(e){setError((e as Error).message)}finally{running.current=false}void load()}
  async function clearDevice(){if(queueCount||drafts.length)throw Error('Sync or export and resolve queued changes before clearing this device.');await exclusive(()=>eraseDevice(account.current));local.current=null;storageVersion.current=0;}
- return {data,busy,error,setError,offline,notice,setNotice,synced,queueCount,drafts,authRequired,load,submit,discardDraft,reapplyDraft,clearDevice};
+ return {data,ownerName,busy,error,setError,offline,notice,setNotice,synced,queueCount,drafts,authRequired,load,submit,discardDraft,reapplyDraft,clearDevice};
 }

@@ -1,3 +1,5 @@
+// Imported build marker changes with the offline bundle so installed apps update.
+importScripts('/offline/version.js');
 // Only the static offline shell is cached. Private HTML and API responses are never cached.
 const PREFIX='pocket-ledger-shell-';let current;
 self.addEventListener('install',event=>event.waitUntil((async()=>{const r=await fetch('/offline/assets.json',{cache:'no-store'});if(!r.ok)throw Error('Offline shell unavailable');const manifest=await r.json();current=PREFIX+manifest.version;const cache=await caches.open(current);await cache.addAll(manifest.assets);await self.skipWaiting()})()));
