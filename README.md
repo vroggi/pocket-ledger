@@ -1,4 +1,4 @@
-# finora (Pocket Ledger)
+# Pocket Ledger
 
 A multi-user personal finance PWA with a private ledger per signed-in user with mobile installation and offline operation. English interface, EUR, calendar dates in Europe/Vilnius. It records your finances manually; it does not connect to banks or execute real payments.
 
@@ -55,7 +55,7 @@ pnpm run build
 
 ## Interface and password sign-in
 
-The finora interface follows the supplied dark/violet dashboard reference. Light
+The Pocket Ledger interface follows the supplied dark/violet dashboard reference. Light
 mode remains available. The balance chart derives from actual recorded transactions;
 opening balances are treated as starting balances because their history has no
 date. Internal transfers have no effect on the chart. Comparison percentages are
