@@ -1,12 +1,12 @@
 # Pocket Ledger
 
-A private, single-owner personal finance PWA with mobile installation and offline operation. English interface, EUR, calendar dates in Europe/Vilnius. It records your finances manually; it does not connect to banks or execute real payments.
+A multi-user personal finance PWA with a private ledger per signed-in user with mobile installation and offline operation. English interface, EUR, calendar dates in Europe/Vilnius. It records your finances manually; it does not connect to banks or execute real payments.
 
 ## Stack and hosting
 
 - React 19 + TypeScript; Next.js-compatible app routes supplied by the Sites Vinext starter (Vinext is beta, not an official Next.js runtime).
 - Cloudflare Workers for the API; Cloudflare D1 (SQLite) for durable data; Drizzle schema and committed SQL migrations.
-- Hosted authentication and owner-only access are provided by the **Sites ChatGPT gateway**. There is no public registration and no password to store in source.
+- Hosted authentication is provided by the **Sites ChatGPT gateway**. Anyone can open the public installation page and demo; signing in creates their own empty ledger. No passwords are stored by this application.
 - Installable PWA with PNG icons, a standalone offline app shell, encrypted IndexedDB storage and an optimistic outbox. The service worker caches static application assets only; financial API responses and authenticated server HTML are never cached.
 
 For independent Cloudflare hosting, Workers Free currently permits 100,000 requests/day and 10 ms CPU/request; D1 Free includes 5 million rows read/day, 100,000 rows written/day and 5 GB total storage. Paid Workers starts at US$5/month; usage beyond included quotas is billed separately. These are Cloudflare's direct-account prices, **not a claim about Sites billing**. Verify before choosing a plan: https://developers.cloudflare.com/workers/platform/pricing/ and https://developers.cloudflare.com/d1/platform/pricing/ . A larger ledger may exceed the free CPU allowance even at low request volume.
@@ -36,6 +36,7 @@ pnpm run db:generate  # only when changing schema; committed migrations already 
 pnpm run build
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_magenta_wallflower.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_owner_guard.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_reflective_garia.sql
 pnpm dev
 ```
 
@@ -51,23 +52,20 @@ pnpm run build
 
 `pnpm start` previews the built worker locally; it does not simulate hosted sign-in. Use `pnpm dev` for the portable local sign-in workflow.
 
-## Hosted owner account and database
+## Hosted accounts and database
 
-1. Keep the Site's access policy **owner-only**. The first real owner opens `/` and signs in with their ChatGPT account. No extra account registration is required.
-2. Sites strips/replaces its authenticated identity headers. The API rejects requests without identity. The first authorized owner initializes the singleton ledger; other user IDs receive no ledger data and cannot update it.
-3. The database is accessible only through the server's private D1 binding (`DB`), never through a browser database key. Every read/write binds the authenticated owner. SQLite enforces a single ledger, valid JSON, schema version and immutable ownership.
-4. Publishing through Sites provisions `DB` and applies committed schema migrations. The hosting manifest enables `d1: "DB"`; do not add real database files or financial records to Git.
-5. Open on a second device using the same owner account. Changes first enter an encrypted device outbox. The interface displays optimistic values and a persistent Not synced indicator. Only D1-confirmed changes produce the cloud-saved message. Visible clients refresh and flush the queue every 8 seconds and on focus/reconnection.
+1. Publish the multi-user version and apply its schema migration before setting the Site audience to **public**. Public access permits the landing page, `/install`, `/privacy` and `/demo`; it does not bypass financial API authentication.
+2. Each visitor signs in through ChatGPT. Sites strips/replaces authenticated identity headers. Anonymous financial requests return 401. `user_ledgers.owner` is the stable authenticated Site user ID, not an email or a client-selected ID. Every query and write is scoped to this ID.
+3. The private D1 binding (`DB`) is server-only. No browser database key is issued. Database checks require valid JSON/schema/revisions, unique ownership and immutable owner IDs. An operator with infrastructure access can administer the database; this is not cloud end-to-end encryption.
+4. The original singleton `ledger` is retained. The original user's first request copies its existing payload and revision to their own `user_ledgers` row idempotently. Other users always start empty, including when they arrive before that original user. This bounded lazy migration leaves the original row intact; it is never a fallback for someone else's identity.
+5. Open on another device with the same ChatGPT account to sync. Every POST must also carry the account ID last verified by GET. It is compared with server identity, never used to choose another user's row. Older unscoped clients must reload before saving. Account switches stop the old tab's queue instead of replaying it into a different account.
+6. Offline snapshots, encryption keys, queues and drafts are keyed by user in IndexedDB v2. Only the server-confirmed original owner may import the previous unscoped offline snapshot. The last verified account is the offline fallback. A browser profile is a device trust boundary, not a multi-user security vault: sign out before sharing it. Use separate OS/browser profiles for shared devices.
 
-A service-access token without visitor identity cannot operate this financial API. Do not share the Site or widen its access policy. Never treat an `oai-authenticated-user-id` header from an untrusted direct internet request as authentication.
-
-### Independent hosting is an additional integration
-
-The source is open and reusable, but its **current production authentication depends on Sites**. A bare `wrangler deploy` outside Sites is not a secure substitute: configure Cloudflare Access with your owner email allowlist **and implement/verify Access JWTs at the Worker origin**, replacing `app/chatgpt-auth.ts`. Do not expose the worker until that integration is in place. The current implementation does not claim to supply standalone Access JWT verification. Do not simply forward arbitrary identity headers.
+A service token without visitor identity cannot operate the financial API. Never trust arbitrary identity headers at a directly exposed Worker origin. Outside Sites, replace `app/chatgpt-auth.ts` with verified origin-side authentication (for example verified Access JWTs) before publishing. Bare `wrangler deploy` does not provide Sites identity verification. Hosted migrations are applied during Sites publication.
 
 ## Data model and atomicity
 
-For this one-owner version, D1 stores one versioned **ledger document** in a `ledger` row (`id=1`, `owner`, `revision`, `payload`, `updated_at`). The document contains typed collections:
+D1 stores one versioned **ledger document per user** in `user_ledgers` (`owner` primary key, `revision`, `payload`, `updated_at`). The original singleton remains a migration source for its original owner only. The document contains typed collections:
 
 | Collection | Purpose |
 | --- | --- |
@@ -85,7 +83,7 @@ For this one-owner version, D1 stores one versioned **ledger document** in a `le
 
 All calculations happen in `lib/finance.ts` and are repeated **on the server**. The browser cannot submit authoritative balances. A mutation validates a complete next state, then atomically updates it using `WHERE owner=? AND revision=?`. Only one of two writes based on the same revision succeeds. Conflicts return HTTP 409; the UI loads the new version and asks you to review and save again. A lost response retains the same command ID; a retry recognizes an already committed command. Before replay, per-record fingerprints detect edits from another device, including forms opened before a refresh. The cloud record wins; the local change is retained as a reviewable draft and is not included in displayed balances until explicitly reapplied. Relative contributions are revalidated against current cloud funds. Already-confirmed recurring occurrences are removed from the queue without duplicates. Old monthly suggestions and changed full restores become drafts, rather than silently applying in another month or over newer data.
 
-This document design deliberately trades large-ledger scalability for simple atomic accounting in a single-owner app. Validation caps the document at **1.5 million JSON characters** and each collection at 20,000 entries. The whole document is read/polled, so large ledgers should migrate to normalized tables or a transactional Durable Object before reaching these limits. Never silently prune idempotency or confirmation history.
+This document design deliberately trades large-ledger scalability for simple atomic accounting per user. Validation caps the document at **1.5 million JSON characters** and each collection at 20,000 entries. The whole document is read/polled, so large ledgers should migrate to normalized tables or a transactional Durable Object before reaching these limits. Never silently prune idempotency or confirmation history.
 
 ## Financial rules
 
@@ -110,31 +108,31 @@ In Settings choose **Download full backup**. It includes every financial collect
 
 Before restore, download a current backup. Select the JSON file, review counts and total balances before/after, then explicitly confirm replacement. The server validates it again and replaces the document atomically against the current revision. The current authenticated owner remains unchanged. A conflict requires reloading/reviewing. A restore intentionally replaces all financial history, including confirmation history, with the backup's version.
 
-The app itself does not send financial records to analytics or external services. Theme and the last chosen account ID are local preferences. D1 is the canonical store; the encrypted device copy permits offline use after a first successful online owner sign-in. The PWA worker does not cache private server HTML/API data. Offline snapshots and the outbox are encrypted with AES-GCM in IndexedDB, using a non-extractable device key stored in the same browser profile. This is not a separate PIN/biometric lock: anyone with access to that browser profile may be able to view the offline ledger. Signing out clears device storage after all queued changes and drafts are resolved. A shared device should be signed out after use.
+The app itself does not send financial records to analytics or external services. Theme and the last chosen account ID are local preferences. D1 is the canonical store; the encrypted device copy permits offline use after a first successful online sign-in. The PWA worker does not cache private server HTML/API data. Offline snapshots and the outbox are encrypted with AES-GCM in IndexedDB, using a non-extractable device key stored in the same browser profile. This is not a separate PIN/biometric lock: anyone with access to that browser profile may be able to view the offline ledger. Signing out clears that account’s device snapshot and encryption key after all queued changes and drafts are resolved. Previous accounts’ copies remain separate; do not share a browser profile without signing out. A shared device should be signed out after use.
 
 ## Public GitHub source
 
 Only application source, schema/migrations, tests, static icons, lockfile, documentation and `.env.example` belong in the public repository. Never commit `.env`, `.dev.vars`, `.wrangler`, `.sites-runtime`, database files or backups. `.gitignore` excludes these. No personal ledger is seeded; sample data exists only in `lib/demo.ts`.
 
-Public source: https://github.com/vroggi/pocket-ledger. Clone it with `git clone https://github.com/vroggi/pocket-ledger.git` and follow the setup instructions above. The included GitHub Actions workflow runs financial tests, TypeScript checks and a production build. GitHub pushes do not automatically deploy the owner-private Site.
+Public source: https://github.com/vroggi/pocket-ledger. Clone it with `git clone https://github.com/vroggi/pocket-ledger.git` and follow the setup instructions above. The included GitHub Actions workflow runs financial tests, TypeScript checks and a production build. GitHub pushes do not automatically deploy the Site.
 
 ## Testing and known limits
 
 The automated tests exercise exact cents, both transfer legs, opening balances, account archiving, expense edits/deletes, month/year boundaries, virtual/dedicated savings, double allocation prevention, income rules and edits/deletion after release, fixed contributions, recurring deduplication/skip/pause, month-end/leap-year dates, forecasts, CSV escaping, backup validation, immutable owner and versioned database writes across two devices.
 
-Offline-extended mode requires opening the ledger online once on each device so the app shell and encrypted snapshot can be prepared. Keep the app open after reconnection to flush queued changes; background sync while the app is closed is not promised. Browser storage can be evicted; keep backups. Full backup restores require a connection and an empty outbox. Exports made while changes are queued include those unconfirmed optimistic changes. No bank integrations, investments, multi-currency, shared users, email reminders or automatic charges. Sync is polling rather than instantaneous push. Backups are manual downloads; no unattended off-site backup job is configured. Browser/PWA installation and end-to-end hosted sign-in/save checks must be verified on the final deployed URL. An untested demo or local preview must never be reported as working cloud synchronization.
+Offline-extended mode requires opening the ledger online once on each device so the app shell and encrypted snapshot can be prepared. Keep the app open after reconnection to flush queued changes; background sync while the app is closed is not promised. Browser storage can be evicted; keep backups. Full backup restores require a connection and an empty outbox. Exports made while changes are queued include those unconfirmed optimistic changes. No bank integrations, investments, multi-currency, shared household ledgers, email reminders or automatic charges. Sync is polling rather than instantaneous push. Backups are manual downloads; no unattended off-site backup job is configured. Browser/PWA installation and end-to-end hosted sign-in/save checks must be verified on the final deployed URL. An untested demo or local preview must never be reported as working cloud synchronization.
 
 ## Mobile and offline build
 
-Use **Install app** in the header. On iPhone, open in Safari and use Share → Add to Home Screen; on Android use Chrome’s Install app option. The installed app uses the same owner login and D1 database as the desktop site. Open once online on each device before expecting offline access.
+Use **Install app** in the header. On iPhone, open in Safari and use Share → Add to Home Screen; on Android use Chrome’s Install app option. The installed app uses the same ChatGPT login and D1 database as the desktop site. Open once online on each device before expecting offline access.
 
 `pnpm run build` first builds `offline/index.html` and its React client into ignored `public/offline/`, creates a content-versioned asset list, then builds the hosted Worker. Both UI entrypoints reuse the same Ledger component and financial/sync logic. Never commit device storage or generated offline bundles; the production build recreates them.
 
-`lib/sync.ts` contains pure queue/reconciliation and AES-GCM functions; `app/device-cache.ts` handles IndexedDB with revision checks; `app/use-ledger.ts` coordinates owner-authenticated API access and retries. Web Locks serialize tabs when available; IndexedDB compare-and-swap prevents stale device writes. Tests cover optimistic balances, acknowledgements, same-record conflicts, dependency order, underfunded reserves, stale forms, old monthly suggestions/restores and authenticated encryption.
+`lib/sync.ts` contains pure queue/reconciliation and AES-GCM functions; `app/device-cache.ts` handles IndexedDB with revision checks; `app/use-ledger.ts` coordinates user-authenticated API access and retries. Web Locks serialize tabs when available; IndexedDB compare-and-swap prevents stale device writes. Tests cover optimistic balances, acknowledgements, same-record conflicts, dependency order, underfunded reserves, stale forms, old monthly suggestions/restores and authenticated encryption.
 
 ### Install on iPhone
 
-Open `/install` in Safari after signing in. Choose Share → Add to Home Screen,
+Open the public `/install` page in Safari. Sign in before opening your private ledger. Choose Share → Add to Home Screen,
 keep **Open as Web App** enabled when offered, and tap Add. Open the new icon
 online, sign in again if necessary, and wait for **Synced**. The installation guide
 checks whether app files and an encrypted ledger copy exist in the current browser;

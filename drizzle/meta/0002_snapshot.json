@@ -1,0 +1,129 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "d2d901fa-9d3d-4179-9839-a76841e34fde",
+  "prevId": "850f9068-e2ae-47f3-9d29-ce9766d76ee9",
+  "tables": {
+    "ledger": {
+      "name": "ledger",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "singleton": {
+          "name": "singleton",
+          "value": "\"ledger\".\"id\" = 1"
+        },
+        "valid_payload": {
+          "name": "valid_payload",
+          "value": "json_valid(\"ledger\".\"payload\")"
+        },
+        "positive_revision": {
+          "name": "positive_revision",
+          "value": "\"ledger\".\"revision\" >= 0"
+        }
+      }
+    },
+    "user_ledgers": {
+      "name": "user_ledgers",
+      "columns": {
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "user_valid_payload": {
+          "name": "user_valid_payload",
+          "value": "json_valid(\"user_ledgers\".\"payload\")"
+        },
+        "user_positive_revision": {
+          "name": "user_positive_revision",
+          "value": "\"user_ledgers\".\"revision\" >= 0"
+        },
+        "user_document_version": {
+          "name": "user_document_version",
+          "value": "json_extract(\"user_ledgers\".\"payload\", '$.schemaVersion') IS 1"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

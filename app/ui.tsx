@@ -17,8 +17,8 @@ function Modal({title,close,children}:{title:string;close:()=>void;children:Reac
 function Empty({title,detail,action}:{title:string;detail:string;action?:ReactNode}){return <div className="empty"><FolderOpen size={27}/><strong>{title}</strong><p>{detail}</p>{action}</div>}
 function Field({label,children,help}:{label:string;children:ReactNode;help?:string}){return <label className="field"><span>{label}</span>{children}{help&&<small>{help}</small>}</label>}
 function Meter({value,over=false}:{value:number;over?:boolean}){return <div className={'meter '+(over?'over':'')}><span style={{width:Math.min(100,Math.max(0,value))+'%'}}/></div>}
-export default function Ledger({demo=false}:{demo?:boolean}){
- const ledger=useLedger(demo);
+export default function Ledger({demo=false,accountId}:{demo?:boolean;accountId?:string}){
+ const ledger=useLedger(demo,accountId);
  const {data,busy,error,setError,offline,notice,synced,queueCount,drafts,load}=ledger;
  const [section,setSection]=useState('Dashboard'),[savingsView,setSavingsView]=useState<'jar'|'goals'>('jar'),[month,setMonth]=useState(monthOf(today())),[modal,setModal]=useState(''),[f,setF]=useState<any>({}),[formError,setFormError]=useState(''),[theme,setTheme]=useState('light'),[more,setMore]=useState(false),[query,setQuery]=useState(''),[catFilter,setCatFilter]=useState(''),[accountFilter,setAccountFilter]=useState(''),[nonEssential,setNonEssential]=useState(false),[period,setPeriod]=useState('month'),[dateStart,setDateStart]=useState(''),[dateEnd,setDateEnd]=useState(''),[restore,setRestore]=useState<State|null>(null),[installEvent,setInstallEvent]=useState<any>(null),[installed,setInstalled]=useState(false);
  useEffect(()=>{try{setTheme(localStorage.getItem('pocket-theme')||'light')}catch{}setInstalled(window.matchMedia('(display-mode: standalone)').matches||!!(navigator as any).standalone);const install=(e:Event)=>{e.preventDefault();setInstallEvent(e)};window.addEventListener('beforeinstallprompt',install);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});return()=>window.removeEventListener('beforeinstallprompt',install)},[]);
