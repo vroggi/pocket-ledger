@@ -131,3 +131,14 @@ Use **Install app** in the header. On iPhone, open in Safari and use Share → A
 `pnpm run build` first builds `offline/index.html` and its React client into ignored `public/offline/`, creates a content-versioned asset list, then builds the hosted Worker. Both UI entrypoints reuse the same Ledger component and financial/sync logic. Never commit device storage or generated offline bundles; the production build recreates them.
 
 `lib/sync.ts` contains pure queue/reconciliation and AES-GCM functions; `app/device-cache.ts` handles IndexedDB with revision checks; `app/use-ledger.ts` coordinates owner-authenticated API access and retries. Web Locks serialize tabs when available; IndexedDB compare-and-swap prevents stale device writes. Tests cover optimistic balances, acknowledgements, same-record conflicts, dependency order, underfunded reserves, stale forms, old monthly suggestions/restores and authenticated encryption.
+
+### Install on iPhone
+
+Open `/install` in Safari after signing in. Choose Share → Add to Home Screen,
+keep **Open as Web App** enabled when offered, and tap Add. Open the new icon
+online, sign in again if necessary, and wait for **Synced**. The installation guide
+checks whether app files and an encrypted ledger copy exist in the current browser;
+repeat the check in the installed app because its storage may be separate.
+Installation requires the iPhone owner's action in Safari. No App Store account or
+IPA download is needed for this web app. Device storage can still be removed by iOS;
+keep backups and sync pending changes while the app is open.
